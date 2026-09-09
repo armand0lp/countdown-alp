@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Countdown ALP</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <link rel="apple-touch-icon" href="icon-192.png">
+    <style>
+        body { 
+            margin: 0; 
+            height: 100vh; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center; 
+            background-color: #000000; 
+            color: #ffffff; 
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; 
+            overflow: hidden; 
+            touch-action: manipulation; 
+            transition: background-color 0.5s ease;
+        }
+        .status-text { 
+            font-size: 1.2rem; 
+            text-transform: uppercase; 
+            letter-spacing: 4px; 
+            color: #666666; 
+            text-align: center; 
+        }
+        .display-text { 
+            font-weight: bold; 
+            line-height: 1.2; 
+            margin: 0; 
+            letter-spacing: -2px; 
+            font-variant-numeric: tabular-nums; 
+            text-align: center; 
+        }
+        .date-input { 
+            background: transparent; 
+            border: none; 
+            border-bottom: 1px dashed #333333; 
+            color: #ffffff; 
+            font-weight: bold; 
+            font-family: inherit; 
+            text-align: center; 
+            width: 90%; 
+            outline: none; 
+            transition: border 0.3s; 
+            padding: 10px 0; 
+            color-scheme: dark;
+        }
+        .date-input:focus { border-bottom: 1px dashed #ffffff; }
+
+        .controls { 
+            display: flex; 
+            gap: 1.5rem; 
+        }
+        button.action-btn { 
+            background: none; 
+            border: 1px solid #333333; 
+            color: #ffffff; 
+            padding: 12px 24px; 
+            font-size: 1rem; 
+            text-transform: uppercase; 
+            letter-spacing: 1px; 
+            cursor: pointer; 
+            border-radius: 4px; 
+            transition: all 0.3s ease; 
+        }
+        button.action-btn:hover { 
+            border-color: #ffffff; 
+            background-color: rgba(255, 255, 255, 0.1); 
+        }
+        
+        /* Animación */
+        @keyframes pulseAlert { 0% { background-color: #000000; } 50% { background-color: #333333; } 100% { background-color: #000000; } }
+        .time-up { animation: pulseAlert 1.5s ease-in-out 3; }
+
+        /* Ajustes Responsivos */
+        @media (orientation: landscape) {
+            .display-text { font-size: 18vh; margin: 2vh 0; }
+            .date-input { font-size: 15vh; margin: 2vh 0; }
+            .status-text { margin-bottom: 2vh; }
+            .controls { margin-top: 4vh; }
+        }
+        @media (orientation: portrait) {
+            .display-text { font-size: 14vw; margin: 2rem 0; }
+            .date-input { font-size: 10vw; margin: 2rem 0; }
+            .status-text { margin-bottom: 1rem; }
+            .controls { margin-top: 2rem; flex-wrap: wrap; justify-content: center; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="status-text">Contador a Fecha</div>
+    
+    <input type="date" id="cdInput" class="date-input">
+    
+    <div id="cdDisplayContainer" style="display: none; width: 100%;">
+        <div class="display-text" id="cdDisplay">0d <br> 00:00:00</div>
+    </div>
+    
+    <div class="controls">
+        <button class="action-btn" id="cdStartBtn">Iniciar</button>
+        <button class="action-btn" id="cdResetBtn">Reiniciar</button>
+    </div>
+
+    <script>
+        // --- SISTEMA DE AUDIO Y NOTIFICACIÓN ---
+        const alertSound = new Audio('notificacion.mp3');
+        function playSound() {
+            alertSound.currentTime = 0;
+            alertSound.play().catch(() => console.log("Audio bloqueado. Interactúa primero."));
+        }
+        function showNotification(title, body) {
+            if ('Notification' in window && Notification.permission === 'granted') {
+                new Notification(title, { body: body, icon: 'icon-192.png' });
+            }
+        }
+        function triggerPulse() {
+            document.body.classList.remove('time-up');
+            void document.body.offsetWidth;
+            document.body.classList.add('time-up');
+        }
+
+        // --- LÓGICA DEL CONTADOR DE DÍAS ---
+        let cdInterval = null, cdTarget = null;
+        const cdInput = document.getElementById('cdInput');
+        const cdDisplayContainer = document.getElementById('cdDisplayContainer');
+        const cdDisplay = document.getElementById('cdDisplay');
+        const cdStartBtn = document.getElementById('cdStartBtn');
+        const cdResetBtn = document.getElementById('cdResetBtn');
+
+        cdStartBtn.addEventListener('click', () => {
+            if (!cdInput.value) return; 
+            
+            if ('Notification' in window && Notification.permission !== 'granted' && Notification.permission !== 'denied') {
+                Notification.requestPermission();
+            }
+            
+            // Crea la fecha objetivo (A media noche local)
+            const dateParts = cdInput.value.split('-');
+            cdTarget = new Date(dateParts[0], dateParts[1] - 1, dateParts[2]).getTime();
+            
+            cdInput.style.display = 'none';
+            cdDisplayContainer.style.display = 'block';
+            cdStartBtn.style.display = 'none'; 
+
+            const updateCd = () => {
+                const now = new Date().getTime();
+                const distance = cdTarget - now;
+                
+                if (distance <= 0) {
+                    clearInterval(cdInterval);
+                    cdDisplay.innerHTML = '¡DÍA<br>ALCANZADO!';
+                    playSound();
+                    triggerPulse();
+                    showNotification('¡Llegó la fecha!', 'Tu cuenta regresiva ha terminado.');
+                } else {
+                    const d = Math.floor(distance / (1000 * 60 * 60 * 24));
+                    const h = Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                    const m = Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60));
+                    const s = Math.floor((distance % (1000 * 60)) / 1000);
+                    cdDisplay.innerHTML = `${d}d <br> ${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+                }
+            };
+            
+            updateCd();
+            cdInterval = setInterval(updateCd, 1000);
+        });
+
+        cdResetBtn.addEventListener('click', () => {
+            clearInterval(cdInterval);
+            cdTarget = null;
+            cdInput.style.display = 'block';
+            cdDisplayContainer.style.display = 'none';
+            cdStartBtn.style.display = 'block';
+            cdInput.value = ''; 
+            document.body.classList.remove('time-up');
+        });
+
+        // --- PWA ---
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(reg => console.log('SW registrado', reg))
+                    .catch(err => console.log('SW error', err));
+            });
+        }
+    </script>
+</body>
+</html>
